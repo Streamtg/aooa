@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+LISTEN_PORT=$MAGNET2TORRENT_SERVICE_PORT
+set +a
+/app/magnet2torrent 2>&1 | s6-log p"[magnet2torrent]" 1

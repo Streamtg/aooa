@@ -1,0 +1,8 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+WEB_PORT=$CONTENT_TRANSCODER_SERVICE_PORT
+HLS_AAC_CODEC=aac
+OUTPUT=$DATA_DIR
+set +a
+/app/content-transcoder 2>&1 | s6-log p"[content-transcoder]" 1

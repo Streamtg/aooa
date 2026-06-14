@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+set +a
+redis-server --port $REDIS_MASTER_SERVICE_PORT 2>&1 | s6-log p"[redis]" 1

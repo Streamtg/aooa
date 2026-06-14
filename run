@@ -1,0 +1,3 @@
+#!/command/with-contenv sh
+
+envsubst < /etc/webtor/common.template.env > /etc/webtor/common.env

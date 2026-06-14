@@ -1,0 +1,20 @@
+#!/command/with-contenv sh
+
+# Wait for VPN connectivity before starting services, if enabled
+# Enable by setting env var WAIT_FOR_VPN=true
+
+if [ "${WAIT_FOR_VPN:-false}" = "true" ]; then
+  echo "Waiting for VPN to be connected..."
+  while ! grep -s -q "connected" /shared/vpnstatus; do
+    # Also account for gluetun-style http controller
+    # Undocumented feature from https://github.com/qdm12/gluetun/issues/2277#issuecomment-2115964521
+    if command -v curl >/dev/null 2>&1; then
+      if curl --max-time 2 -s http://localhost:8000/v1/vpn/status | grep -q running; then
+        break
+      fi
+    fi
+    echo "VPN not connected"
+    sleep 2
+  done
+  echo "VPN Connected, starting application..."
+fi

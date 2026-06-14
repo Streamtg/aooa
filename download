@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+if [ ! -f .env ]; then
+  echo "❌ Falta .env. Copia .env.example a .env y edítalo."
+  exit 1
+fi
+set -a
+source .env
+set +a
+if [ "${WEBTOR_ENABLED:-true}" = "true" ]; then
+  echo "🚀 Iniciando Webtor/uDocker..."
+  WORKER_BASE_URL="${WORKER_BASE_URL:-http://localhost:8080}" ./scripts/install_udocker_webtor.sh
+fi
+echo "🤖 Iniciando bot Go..."
+exec go run .

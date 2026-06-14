@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+WEB_PORT=$SRT2VTT_SERVICE_PORT
+set +a
+/app/srt2vtt 2>&1 | s6-log p"[srt2vtt]" 1

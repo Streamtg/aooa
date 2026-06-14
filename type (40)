@@ -1,0 +1,52 @@
+#!/command/with-contenv sh
+# Start PostgreSQL under s6 and ensure DB/user exist
+set -e
+set -a
+source /etc/webtor/common.env
+set +a
+
+# Skip local PostgreSQL startup if disabled
+if [ "${USE_LOCALPG:-true}" = "false" ]; then
+  echo "[postgres] USE_LOCALPG=false — skipping local PostgreSQL startup"
+  exit 0
+fi
+
+mkdir -p "$PGDATA_DIR"
+chown -R postgres:postgres "$PGDATA_DIR"
+chmod 700 "$PGDATA_DIR"
+mkdir -p /run/postgresql
+chown -R postgres:postgres /run/postgresql
+chmod 700 /run/postgresql
+
+# Initialize database if needed
+if [ ! -s "$PGDATA_DIR/PG_VERSION" ]; then
+  echo "[postgres] initializing database cluster at $PGDATA_DIR"
+  # Use trust for local socket during bootstrap to avoid requiring a postgres superuser password
+  su -s /bin/sh -c "initdb -D '$PGDATA_DIR' -U postgres -A trust -E UTF8" postgres
+  # Configure basic settings
+  echo "listen_addresses='*'" >> "$PGDATA_DIR/postgresql.conf"
+  echo "port=${PG_PORT:-5432}" >> "$PGDATA_DIR/postgresql.conf"
+  # Allow local connections: trust postgres via unix socket; md5 for TCP
+  echo "local   all             postgres                                trust" >> "$PGDATA_DIR/pg_hba.conf"
+  echo "host    all             all             127.0.0.1/32            md5" >> "$PGDATA_DIR/pg_hba.conf"
+  echo "host    all             all             ::1/128                 md5" >> "$PGDATA_DIR/pg_hba.conf"
+fi
+
+# Background initializer ensuring role/db exist once server is up
+(
+  # Wait until server is accepting connections
+  for i in $(seq 1 60); do
+    if su -s /bin/sh -c "pg_isready -p ${PG_PORT:-5432}" postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  # Create user if not exists
+  su -s /bin/sh -c "psql -p ${PG_PORT:-5432} -U postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${PG_USER}'\" | grep -q 1 || psql -p ${PG_PORT:-5432} -U postgres -c \"CREATE ROLE \"\"${PG_USER}\"\" LOGIN PASSWORD '${PG_PASSWORD}'\"" postgres || true
+  # Create database if not exists and grant
+  su -s /bin/sh -c "psql -p ${PG_PORT:-5432} -U postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='${PG_DATABASE}'\" | grep -q 1 || psql -p ${PG_PORT:-5432} -U postgres -c \"CREATE DATABASE \"\"${PG_DATABASE}\"\" OWNER \"\"${PG_USER}\"\"\"" postgres || true
+  su -s /bin/sh -c "psql -p ${PG_PORT:-5432} -U postgres -c \"GRANT ALL PRIVILEGES ON DATABASE \"\"${PG_DATABASE}\"\" TO \"\"${PG_USER}\"\"\"" postgres || true
+) &
+
+# Start postgres in foreground for s6 supervision
+exec s6-setuidgid postgres postgres -D "$PGDATA_DIR" 2>&1 | s6-log p"[postgres]" 1

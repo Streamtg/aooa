@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+WEB_PORT=$EXTERNAL_PROXY_SERVICE_PORT
+set +a
+/app/external-proxy 2>&1 | s6-log p"[external-proxy]" 1

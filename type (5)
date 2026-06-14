@@ -1,0 +1,129 @@
+worker_processes auto;
+
+events {
+	worker_connections 4096;
+}
+
+http {
+	log_format main '$remote_addr $remote_user [$time_local] "$request" '
+		'$status "$http_referer" "$http_user_agent"';
+
+	access_log  /dev/null;
+	error_log   stderr;
+
+    proxy_buffering off;
+
+	default_type  application/octet-stream;
+	include       /usr/local/nginx/conf/mime.types;
+
+	sendfile    on;
+	tcp_nopush  on;
+	tcp_nodelay on;
+
+	proxy_connect_timeout 300;
+	proxy_send_timeout    300;
+	proxy_read_timeout    300;
+
+    # open_file_cache          max=1000 inactive=5m;
+    # open_file_cache_valid    2m;
+    # open_file_cache_min_uses 1;
+    # open_file_cache_errors   on;
+
+	# gzip         on;
+	# gzip_types   application/vnd.apple.mpegurl video/f4m application/dash+xml text/xml text/vtt;
+	# gzip_proxied any;
+
+	keepalive_timeout 60;
+	# keepalive_requests 1000;
+
+	upstream remote {
+		server ${TORRENT_HTTP_PROXY_SERVICE_HOST}:${TORRENT_HTTP_PROXY_SERVICE_PORT};
+	}
+
+	map $http_x_tokenize $token {
+       "no" "";
+       default $args;
+	}
+
+	server {
+        vod_mode                           remote;
+        vod_upstream_location              /remote;
+        vod_metadata_cache                 metadata_cache 1024m;
+        vod_response_cache                 response_cache 128m;
+        vod_base_url                       '';
+
+        vod_last_modified_types            *;
+        # vod_segment_duration               9000;
+        # vod_align_segments_to_key_frames   on;
+        vod_dash_fragment_file_name_prefix "s";
+        vod_hls_segment_file_name_prefix   "s";
+
+        vod_manifest_segment_durations_mode accurate;
+
+        secure_token_avoid_cookies on;
+        secure_token_types application/vnd.apple.mpegurl application/dash+xml text/xml;
+        secure_token $token;
+
+        vod_upstream_extra_args $token;
+        listen ${NGINX_VOD_SERVICE_PORT};
+		root /opt/static;
+
+		location /health {
+			access_log off;
+			return 200 "healthy\n";
+		}
+
+		location ~ /remote/[^/]+/(.*) {
+			internal;
+			proxy_pass http://remote$http_x_full_path$is_args$args;
+		}
+
+		location /hls/ {
+			vod hls;
+
+			vod_bootstrap_segment_durations 2000;
+			vod_bootstrap_segment_durations 2000;
+			vod_bootstrap_segment_durations 2000;
+			vod_bootstrap_segment_durations 4000;
+			vod_bootstrap_segment_durations 4000;
+			vod_bootstrap_segment_durations 6000;
+
+			add_header Access-Control-Allow-Headers '*';
+			add_header Access-Control-Allow-Origin '*';
+			add_header Access-Control-Allow-Methods 'GET, HEAD, OPTIONS';
+		}
+	}
+    upstream web_ui {
+        server ${WEB_UI_SERVICE_HOST}:${WEB_UI_SERVICE_PORT};
+    }
+    upstream rest_api {
+        server ${REST_API_SERVICE_HOST}:${REST_API_SERVICE_PORT};
+    }
+	server {
+        listen ${WEB_PORT};
+        location / {
+            proxy_pass http://web_ui/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+            proxy_read_timeout 300s;
+        }
+        location /rest-api/ {
+            proxy_pass http://rest_api/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+            proxy_read_timeout 300s;
+        }
+        location /torrent-http-proxy/ {
+            proxy_pass http://remote/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+            proxy_read_timeout 300s;
+        }
+    }
+}

@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+set -a
+source /etc/webtor/common.env
+set +a
+envsubst '$REST_API_SERVICE_HOST $REST_API_SERVICE_PORT $TORRENT_HTTP_PROXY_SERVICE_HOST $TORRENT_HTTP_PROXY_SERVICE_PORT $NGINX_VOD_SERVICE_PORT $WEB_PORT $WEB_UI_SERVICE_PORT $WEB_UI_SERVICE_HOST' < /usr/local/nginx/conf/nginx.template.conf > /usr/local/nginx/conf/nginx.conf
+/usr/local/nginx/sbin/nginx -g "daemon off;" 2>&1 | s6-log p"[nginx]" 1
